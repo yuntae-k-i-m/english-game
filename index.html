@@ -19,9 +19,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
-
-        // 제공해주신 API 키 적용
+        const { useState, useEffect } = React;
         const apiKey = "AIzaSyAU95xLMS6iWStHCL0HOdQbjKx0xaBoh1M"; 
 
         function App() {
@@ -35,16 +33,15 @@
             const [showResult, setShowResult] = useState(false);
             const [score, setScore] = useState(0);
 
-            const topics = ["Business", "Daily Life", "Technology", "Travel", "Health"];
-
             useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [screen, hintLevel, isCorrect, showResult]);
 
             const generateQuizzes = async () => {
                 setScreen('loading');
+                const topics = ["Business", "Daily Life", "Technology", "Travel", "Health"];
                 const randomTopic = topics[Math.floor(Math.random() * topics.length)];
                 
                 const prompt = `Generate 10 English word quiz items for Korean learners about ${randomTopic}. 
-                Format: JSON array of objects. Each object: { "ko": "Korean sentence with <span class='text-emerald-500 font-bold'>word</span>", "en_pre": "English before", "en_post": "English after", "answer": "word", "hintText": "Korean hint", "level": 25 }`;
+                Return ONLY a JSON array. Each object: { "ko": "Korean sentence with <span class='text-emerald-500 font-bold'>word</span>", "en_pre": "English before", "en_post": "English after", "answer": "word", "hintText": "Korean hint", "level": 25 }`;
 
                 try {
                     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
@@ -57,14 +54,18 @@
                     });
 
                     const data = await response.json();
-                    const text = data.candidates[0].content.parts[0].text;
+                    let text = data.candidates[0].content.parts[0].text;
+                    
+                    // 불필요한 마크다운 기호 제거 로직 추가
+                    text = text.replace(/```json/g, "").replace(/```/g, "").trim();
                     const parsedData = JSON.parse(text);
                     
                     setQuizData(parsedData);
                     setScreen('quiz');
                 } catch (error) {
-                    console.error("API Error:", error);
-                    // API 실패 시 테스트용 데이터로 진행 (연결 확인용)
+                    console.error("API Error Details:", error);
+                    // 실패 시 즉시 안내 메시지와 함께 샘플 데이터로 전환
+                    alert("AI 연결에 지연이 발생하여 준비된 예시 문제로 시작합니다.");
                     setQuizData([{
                         ko: "그는 <span class='text-emerald-500 font-bold'>창의적인</span> 아이디어가 많다.",
                         en_pre: "He has many", en_post: "ideas.", answer: "creative",
@@ -72,26 +73,27 @@
                     }]);
                     setScreen('quiz');
                 }
-                // 초기화
                 setCurrentIdx(0); setInputValue(""); setHintLevel(0); setIsCorrect(false); setShowResult(false); setScore(0);
             };
 
             const handleCheck = () => {
-                if (inputValue.toLowerCase().trim() === quizData[currentIdx].answer.toLowerCase()) {
+                const currentQuiz = quizData[currentIdx];
+                if (inputValue.toLowerCase().trim() === currentQuiz.answer.toLowerCase()) {
                     setIsCorrect(true); setShowResult(true); setScore(s => s + 1);
-                    window.speechSynthesis.speak(new SpeechSynthesisUtterance(`${quizData[currentIdx].en_pre} ${quizData[currentIdx].answer} ${quizData[currentIdx].en_post}`));
+                    window.speechSynthesis.speak(new SpeechSynthesisUtterance(`${currentQuiz.en_pre} ${currentQuiz.answer} ${currentQuiz.en_post}`));
                 } else {
                     setIsWrong(true); setTimeout(() => setIsWrong(false), 800);
                 }
             };
 
+            // 나머지 UI 렌더링 (메뉴, 로딩, 퀴즈 화면)
             if (screen === 'menu') return (
                 <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
                     <div className="bg-white p-10 rounded-[3rem] shadow-2xl w-full max-w-md border-4 border-white">
                         <i data-lucide="trophy" className="text-purple-600 w-16 h-16 mx-auto mb-6"></i>
                         <h1 className="text-3xl font-bold text-gray-800 mb-2">말해봐 잉글리시</h1>
-                        <p className="text-gray-500 mb-8">AI와 함께하는 실전 영어 퀴즈</p>
-                        <button onClick={generateQuizzes} className="w-full bg-purple-600 text-white font-bold py-5 rounded-2xl shadow-lg active:scale-95 transition-all">학습 시작하기</button>
+                        <p className="text-gray-500 mb-8">AI 실시간 문제 생성 모드</p>
+                        <button onClick={generateQuizzes} className="w-full bg-purple-600 text-white font-bold py-5 rounded-2xl shadow-lg active:scale-95">학습 시작하기</button>
                     </div>
                 </div>
             );
@@ -99,7 +101,7 @@
             if (screen === 'loading') return (
                 <div className="min-h-screen flex flex-col items-center justify-center">
                     <i data-lucide="loader-2" className="text-purple-600 w-16 h-16 animate-spin"></i>
-                    <p className="text-purple-700 font-bold mt-4">문제를 생성하고 있습니다...</p>
+                    <p className="text-purple-700 font-bold mt-4">AI가 문제를 구상하고 있습니다...</p>
                 </div>
             );
 
@@ -110,11 +112,12 @@
                         <div className="mb-4 text-xs font-bold text-blue-500 uppercase">Level {currentQuiz?.level}</div>
                         <h2 className="text-xl font-bold text-gray-800 mb-6" dangerouslySetInnerHTML={{ __html: currentQuiz?.ko }} />
                         {hintLevel > 0 && <div className="bg-rose-50 text-rose-600 p-4 rounded-xl mb-6 text-sm">{currentQuiz?.hintText}</div>}
-                        <div className="text-2xl text-gray-800 mb-auto">
+                        <div className="text-2xl text-gray-800 mb-auto leading-relaxed">
                             {currentQuiz?.en_pre} 
                             <input className={`border-b-4 outline-none text-center mx-2 w-32 ${isCorrect ? 'border-emerald-400 text-emerald-500' : isWrong ? 'border-red-400 animate-shake' : 'border-blue-200 focus:border-blue-500'}`}
                                 value={inputValue} onChange={(e) => setInputValue(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && (showResult ? (currentIdx < quizData.length - 1 ? (setCurrentIdx(c => c+1), setInputValue(""), setShowResult(false), setIsCorrect(false), setHintLevel(0)) : setScreen('menu')) : handleCheck())}
+                                autoFocus
                             />
                             {currentQuiz?.en_post}
                         </div>
